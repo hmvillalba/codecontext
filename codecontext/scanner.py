@@ -14,10 +14,13 @@ from codecontext.analyzers.routes import extract_routes
 from codecontext.analyzers.model_relations import extract_model_relations, extract_model_properties
 from codecontext.analyzers.migrations import extract_migrations
 from codecontext.analyzers.risks import detect_risks
+from codecontext.analyzers.gaps import detect_gaps
 from codecontext.analyzers.traceability import build_traces, build_role_map
+from codecontext.rules.engine import load_rules, evaluate_custom_rules
 from codecontext.generators import generate_json_index, generate_compact_json_string
 from codecontext.generators.markdown import generate_markdown
 from codecontext.generators.summary import generate_summary
+from codecontext.generators.issues import generate_issues_json
 from codecontext.models import FileSummary, Language, NodeType, ProjectIndex
 from codecontext.parsers.go_parser import GoParser
 from codecontext.parsers.php_parser import PhpParser
@@ -84,6 +87,7 @@ def scan_project(
     root_path: str | Path,
     max_workers: int = 4,
     incremental_cache: Optional[Path] = None,
+    rules_path: Optional[str] = None,
 ) -> ProjectIndex:
     root = Path(root_path).resolve()
 
@@ -129,12 +133,12 @@ def scan_project(
     index.architecture = detect_architecture(index, index.dependencies)
     index.entry_points = index.architecture.get("entry_points", [])
 
-    _extract_laravel_specifics(index, root)
+    _extract_laravel_specifics(index, root, rules_path)
 
     return index
 
 
-def _extract_laravel_specifics(index: ProjectIndex, root: Path):
+def _extract_laravel_specifics(index: ProjectIndex, root: Path, rules_path: Optional[str] = None):
     routes_dirs = [
         root / "routes",
         root / "app" / "routes",
@@ -162,18 +166,25 @@ def _extract_laravel_specifics(index: ProjectIndex, root: Path):
 
     index.risks = detect_risks(index)
 
+    index.risks.extend(detect_gaps(index))
+
+    custom_rules = load_rules(rules_path)
+    if custom_rules:
+        index.risks.extend(evaluate_custom_rules(index, custom_rules))
+
     if index.routes:
         index.traces = build_traces(index, root)
         index.role_map = build_role_map(index)
 
 
-def write_outputs(index: ProjectIndex, output_dir: Path) -> dict:
+def write_outputs(index: ProjectIndex, output_dir: Path, fail_on: str = "high") -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     summary_path = output_dir / "SUMMARY.md"
     json_path = output_dir / "context.json"
     md_path = output_dir / "CONTEXT.md"
     graph_path = output_dir / "deps.json"
+    issues_path = output_dir / "issues.json"
 
     summary_content = generate_summary(index)
     summary_path.write_text(summary_content, encoding="utf-8")
@@ -193,6 +204,8 @@ def write_outputs(index: ProjectIndex, output_dir: Path) -> dict:
     }
     graph_path.write_text(json.dumps(deps_data, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    ci_result = generate_issues_json(index, issues_path, fail_on=fail_on)
+
     summary_tokens = len(summary_content) // 4
 
     return {
@@ -200,6 +213,7 @@ def write_outputs(index: ProjectIndex, output_dir: Path) -> dict:
         "json": str(json_path),
         "markdown": str(md_path),
         "deps": str(graph_path),
+        "issues": str(issues_path),
         "summary_tokens": summary_tokens,
         "total_files": len(index.files),
         "total_loc": sum(f.lines_of_code for f in index.files),
@@ -209,5 +223,7 @@ def write_outputs(index: ProjectIndex, output_dir: Path) -> dict:
         "total_tables": len(index.migrations),
         "total_risks": len(index.risks),
         "total_traces": len(index.traces),
+        "ci_blocking": ci_result["blocking_issues"],
+        "ci_should_fail": ci_result["should_fail"],
         "circular_deps": len(deps_data.get("circular", [])),
     }

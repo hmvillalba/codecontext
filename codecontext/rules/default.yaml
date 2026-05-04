@@ -1,0 +1,143 @@
+# CodeContext Rules
+# Custom static analysis rules for your project.
+# These run alongside the built-in rules.
+#
+# IMPORTANT: All rules are STATIC analysis only.
+#   Static: "does a preventive mechanism exist in code/schema?"
+#   Runtime: "are there violations in current data?" ← NOT in scope
+#
+# Usage:
+#   codecontext scan . --rules ./rules.yaml
+#   codecontext ci . --rules ./rules.yaml
+#
+# Available checks:
+#   migration_has_unique              - Verify unique constraint exists in migration
+#   migration_has_unique_or_code_guard - Verify unique constraint OR code-level guard
+#   migration_has_column              - Verify required columns exist in table
+#   model_has_relation      - Verify Eloquent relationship exists on model
+#   route_has_middleware    - Verify routes have required middleware
+#   route_has_policy        - Verify a Policy class exists for a model
+#   route_has_test          - Verify a test class exists for a controller
+#   class_max_methods       - Flag classes with too many methods
+#   table_has_index_on_fk   - Flag foreign keys without explicit index
+#
+# Severity levels: critical, high, warning, info
+
+rules:
+  # ── DATABASE INTEGRITY (static: schema-level guarantees) ────
+
+  - id: DB-001
+    title: "Enrollment activo único por alumno y año académico"
+    severity: high
+    scope: static
+    check: migration_has_unique_or_code_guard
+    query:
+      table: enrollments
+      invariant: "max 1 active enrollment per user per academic year"
+      expected_unique_on: ["user_id", "academic_year_id", "status"]
+    evidence:
+      required:
+        - migration_unique_constraint_or_code_guard
+
+  - id: DB-002
+    title: "Attendances: sin duplicados por alumno/fecha/turno"
+    severity: high
+    scope: static
+    check: migration_has_unique_or_code_guard
+    query:
+      table: attendances
+      invariant: "max 1 attendance per enrollment per date per shift"
+      expected_unique_on: ["enrollment_id", "attendance_date", "shift_id"]
+    evidence:
+      required:
+        - migration_unique_constraint_or_code_guard
+
+  - id: DB-003
+    title: "Todas las foreign keys deben tener índice explícito"
+    severity: info
+    scope: static
+    check: table_has_index_on_fk
+    query: {}
+
+  # ── MODEL RELATIONSHIPS ────────────────────────────────────
+
+  - id: MDL-001
+    title: "El modelo Attendance debe tener relación con Enrollment"
+    severity: warning
+    scope: static
+    check: model_has_relation
+    query:
+      model: Attendance
+      relation_type: belongsTo
+      relation_name: enrollment
+      related: Enrollment
+
+  - id: MDL-002
+    title: "El modelo User debe tener relación con Enrollment"
+    severity: warning
+    scope: static
+    check: model_has_relation
+    query:
+      model: User
+      relation_type: hasMany
+      relation_name: enrollments
+      related: Enrollment
+
+  # ── ROUTE SECURITY ─────────────────────────────────────────
+
+  - id: SEC-001
+    title: "Todas las rutas bajo /panel/ requieren middleware auth"
+    severity: high
+    scope: static
+    check: route_has_middleware
+    query:
+      uri_pattern: "/panel/"
+      middleware: "auth"
+
+  - id: SEC-002
+    title: "Los endpoints de exportación requieren throttling"
+    severity: warning
+    scope: static
+    check: route_has_middleware
+    query:
+      uri_pattern: "/exportar/"
+      middleware: "throttle"
+
+  # ── POLICIES ───────────────────────────────────────────────
+
+  - id: POL-001
+    title: "El modelo Attendance debe tener Policy"
+    severity: warning
+    scope: static
+    check: route_has_policy
+    query:
+      model: Attendance
+
+  - id: POL-002
+    title: "El modelo User debe tener Policy"
+    severity: warning
+    scope: static
+    check: route_has_policy
+    query:
+      model: User
+
+  # ── CODE QUALITY ───────────────────────────────────────────
+
+  - id: QUAL-001
+    title: "Ninguna clase debe tener más de 20 métodos"
+    severity: warning
+    scope: static
+    check: class_max_methods
+    query:
+      max: 20
+      node_types: ["class", "controller", "service"]
+
+  # ── TESTING ────────────────────────────────────────────────
+
+  #  - id: TEST-001
+  #    title: "Cada controller debe tener test"
+  #    severity: info
+  #    scope: static
+  #    check: route_has_test
+  #    query:
+  #      controller: "AttendanceManagementController"
