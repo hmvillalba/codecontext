@@ -72,6 +72,13 @@ Automatically detects: **Laravel**, **Next.js**, **React**, **Django**, **FastAP
 ## Installation
 
 ```bash
+pip install git+https://github.com/hmvillalba/codecontext.git
+```
+
+For local development:
+```bash
+git clone https://github.com/hmvillalba/codecontext.git
+cd codecontext
 pip install -e .
 ```
 
@@ -331,6 +338,13 @@ Detecta automáticamente: **Laravel**, **Next.js**, **React**, **Django**, **Fas
 ## Instalación
 
 ```bash
+pip install git+https://github.com/hmvillalba/codecontext.git
+```
+
+Para desarrollo local:
+```bash
+git clone https://github.com/hmvillalba/codecontext.git
+cd codecontext
 pip install -e .
 ```
 
