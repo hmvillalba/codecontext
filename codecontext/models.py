@@ -162,6 +162,32 @@ class TraceChain:
 
 
 @dataclass
+class BladeView:
+    name: str
+    file_path: str
+    extends: str = ""
+    includes: list[str] = field(default_factory=list)
+    components: list[str] = field(default_factory=list)
+    livewire_components: list[str] = field(default_factory=list)
+    route_refs: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ObserverMapping:
+    model: str
+    observer: str
+    file_path: str = ""
+    events: list[str] = field(default_factory=list)
+
+
+@dataclass
+class EventMapping:
+    event: str
+    listeners: list[str] = field(default_factory=list)
+    file_path: str = ""
+
+
+@dataclass
 class ProjectIndex:
     root_path: str
     files: list[FileSummary] = field(default_factory=list)
@@ -174,4 +200,7 @@ class ProjectIndex:
     risks: list[Risk] = field(default_factory=list)
     traces: list[TraceChain] = field(default_factory=list)
     role_map: dict = field(default_factory=dict)
+    blade_views: list[BladeView] = field(default_factory=list)
+    observers: list[ObserverMapping] = field(default_factory=list)
+    events: list[EventMapping] = field(default_factory=list)
     generated_at: str = ""

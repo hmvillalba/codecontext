@@ -13,6 +13,7 @@ def generate_summary(index: ProjectIndex) -> str:
         _module_map(index),
         _data_model(index),
         _permissions(index),
+        _views_and_observers(index),
         _risks(index),
     ]
     return "\n".join(s for s in sections if s)
@@ -151,6 +152,31 @@ def _permissions(index: ProjectIndex) -> str:
             lines.append(f"  ... +{len(routes) - 8} more routes")
 
     return "\n".join(lines)
+
+
+def _views_and_observers(index: ProjectIndex) -> str:
+    parts = []
+
+    if index.blade_views:
+        total = len(index.blade_views)
+        with_livewire = sum(1 for v in index.blade_views if v.livewire_components)
+        with_routes = sum(1 for v in index.blade_views if v.route_refs)
+        parts.append(f"Blade: {total} views ({with_livewire} livewire, {with_routes} route refs)")
+
+    if index.observers:
+        obs_str = ", ".join(f"{o.model}→{o.observer}" for o in index.observers if o.model)
+        if obs_str:
+            parts.append(f"Observers: {obs_str}")
+
+    if index.events:
+        evt_str = ", ".join(f"{e.event}({len(e.listeners)}L)" for e in index.events)
+        if evt_str:
+            parts.append(f"Events: {evt_str}")
+
+    if not parts:
+        return ""
+
+    return "\n## Views & Observers\n" + "\n".join(f"- {p}" for p in parts)
 
 
 def _risks(index: ProjectIndex) -> str:

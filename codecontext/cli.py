@@ -134,6 +134,8 @@ def _print_results(index, results: dict):
     table.add_row("Risks found", str(results.get("total_risks", 0)))
     table.add_row("CI blocking", str(results.get("ci_blocking", 0)))
     table.add_row("Trace chains", str(results.get("total_traces", 0)))
+    table.add_row("Blade views", str(results.get("total_blade_views", 0)))
+    table.add_row("Observers", str(results.get("total_observers", 0)))
     table.add_row("Circular deps", str(results["circular_deps"]))
     table.add_row("SUMMARY tokens", f"~{results.get('summary_tokens', 0):,}")
 

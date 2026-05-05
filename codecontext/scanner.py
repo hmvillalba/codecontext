@@ -16,6 +16,8 @@ from codecontext.analyzers.migrations import extract_migrations
 from codecontext.analyzers.risks import detect_risks
 from codecontext.analyzers.gaps import detect_gaps
 from codecontext.analyzers.traceability import build_traces, build_role_map
+from codecontext.analyzers.blade_views import extract_blade_views
+from codecontext.analyzers.observers import extract_observers, extract_events
 from codecontext.rules.engine import load_rules, evaluate_custom_rules
 from codecontext.generators import generate_json_index, generate_compact_json_string
 from codecontext.generators.markdown import generate_markdown
@@ -176,6 +178,10 @@ def _extract_laravel_specifics(index: ProjectIndex, root: Path, rules_path: Opti
         index.traces = build_traces(index, root)
         index.role_map = build_role_map(index)
 
+    index.blade_views = extract_blade_views(root)
+    index.observers = extract_observers(root, index.files)
+    index.events = extract_events(root)
+
 
 def write_outputs(index: ProjectIndex, output_dir: Path, fail_on: str = "high") -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -223,6 +229,9 @@ def write_outputs(index: ProjectIndex, output_dir: Path, fail_on: str = "high") 
         "total_tables": len(index.migrations),
         "total_risks": len(index.risks),
         "total_traces": len(index.traces),
+        "total_blade_views": len(index.blade_views),
+        "total_observers": len(index.observers),
+        "total_events": len(index.events),
         "ci_blocking": ci_result["blocking_issues"],
         "ci_should_fail": ci_result["should_fail"],
         "circular_deps": len(deps_data.get("circular", [])),

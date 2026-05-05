@@ -15,6 +15,8 @@ def generate_markdown(index: ProjectIndex) -> str:
         _routes_section(index),
         _model_relations_section(index),
         _database_schema_section(index),
+        _blade_views_section(index),
+        _observers_events_section(index),
         _detailed_nodes(index),
         _dependency_map(index),
     ]
@@ -102,6 +104,64 @@ def _entry_points(index: ProjectIndex) -> str:
     lines = ["## Entry Points", ""]
     for ep in index.entry_points:
         lines.append(f"- `{ep}`")
+    return "\n".join(lines)
+
+
+def _blade_views_section(index: ProjectIndex) -> str:
+    if not index.blade_views:
+        return ""
+
+    lines = ["## Blade Views", ""]
+
+    by_dir: dict[str, list] = {}
+    for v in index.blade_views:
+        parts = v.file_path.split("/")
+        dir_key = "/".join(parts[:-1]) if len(parts) > 1 else "(root)"
+        by_dir.setdefault(dir_key, []).append(v)
+
+    for dir_name in sorted(by_dir.keys()):
+        views = by_dir[dir_name]
+        lines.append(f"### {dir_name}/ ({len(views)} views)")
+        lines.append("")
+        for v in views:
+            parts = [f"`{v.name}`"]
+            if v.extends:
+                parts.append(f"extends:`{v.extends}`")
+            if v.includes:
+                parts.append(f"includes:{len(v.includes)}")
+            if v.livewire_components:
+                parts.append(f"livewire:{','.join(v.livewire_components[:3])}")
+            if v.route_refs:
+                parts.append(f"routes:{len(v.route_refs)}")
+            lines.append(f"- {' | '.join(parts)}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _observers_events_section(index: ProjectIndex) -> str:
+    if not index.observers and not index.events:
+        return ""
+
+    lines = ["## Observers & Events", ""]
+
+    if index.observers:
+        lines.append("### Observers")
+        lines.append("")
+        for o in index.observers:
+            events_str = ", ".join(o.events) if o.events else "?"
+            model_part = f"`{o.model}`" if o.model else "(auto-detected)"
+            lines.append(f"- {model_part} → `{o.observer}` [{events_str}]")
+        lines.append("")
+
+    if index.events:
+        lines.append("### Events & Listeners")
+        lines.append("")
+        for e in index.events:
+            listeners_str = ", ".join(f"`{l}`" for l in e.listeners) if e.listeners else "(none)"
+            lines.append(f"- `{e.event}` → {listeners_str}")
+        lines.append("")
+
     return "\n".join(lines)
 
 

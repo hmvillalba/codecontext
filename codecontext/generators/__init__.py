@@ -36,6 +36,15 @@ def generate_json_index(index: ProjectIndex, max_output_tokens: int = 8000) -> d
     if index.migrations:
         compact["database_schema"] = _build_schema(index)
 
+    if index.blade_views:
+        compact["blade_views"] = _build_blade_views(index)
+
+    if index.observers:
+        compact["observers"] = _build_observers(index)
+
+    if index.events:
+        compact["events"] = _build_events(index)
+
     return compact
 
 
@@ -174,3 +183,44 @@ def _build_schema(index: ProjectIndex) -> list[dict]:
             "unique": t.unique_constraints[:10],
         })
     return tables
+
+
+def _build_blade_views(index: ProjectIndex) -> list[dict]:
+    views = []
+    for v in index.blade_views:
+        entry: dict = {"name": v.name, "file": v.file_path}
+        if v.extends:
+            entry["extends"] = v.extends
+        if v.includes:
+            entry["includes"] = v.includes
+        if v.components:
+            entry["components"] = v.components
+        if v.livewire_components:
+            entry["livewire"] = v.livewire_components
+        if v.route_refs:
+            entry["routes"] = v.route_refs
+        views.append(entry)
+    return views
+
+
+def _build_observers(index: ProjectIndex) -> list[dict]:
+    return [
+        {
+            "model": o.model,
+            "observer": o.observer,
+            "file": o.file_path,
+            "events": o.events,
+        }
+        for o in index.observers
+    ]
+
+
+def _build_events(index: ProjectIndex) -> list[dict]:
+    return [
+        {
+            "event": e.event,
+            "listeners": e.listeners,
+            "file": e.file_path,
+        }
+        for e in index.events
+    ]
