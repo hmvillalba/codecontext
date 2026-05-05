@@ -40,6 +40,24 @@ CodeContext scans your codebase using AST and tree-sitter parsers, then generate
 - **Livewire detection** — Automatic identification of Livewire components
 - **Fillable/casts/traits** — Model properties extracted from code
 
+### C#/.NET deep analysis
+- **EF Core schema** — `DbContext` + `DbSet<T>` extraction, `OnModelCreating` relationships, indexes, unique constraints
+- **DI registration** — `AddTransient/AddScoped/AddSingleton<I,T>` and `AddDbContext<T>` mapping
+- **MVVM views** — Avalonia `.axaml` → ViewModel binding via `x:DataType`, Razor `.cshtml` views
+- **ASP.NET routes** — `[HttpGet]`, `[HttpPost]`, `[Route]` attribute-based routing
+- **Interface detection** — Automatic `inherits_from` vs `implements` separation (I-prefix heuristic)
+
+### Go deep analysis
+- **HTTP routes** — `net/http` `HandleFunc` and `Handle` pattern extraction (24 routes on fact-elec-service)
+- **Middleware chain** — `func(http.Handler) http.Handler` detection, `Chain` pattern mapping
+- **Embedded SQL schema** — `CREATE TABLE` / `CREATE INDEX` from backtick strings in `db.Exec()`
+
+### Python deep analysis
+- **Flask routes** — `@app.route`, `@bp.route` decorator extraction with methods
+- **Django models** — `models.Model` classes with `CharField`, `ForeignKey`, etc.
+- **Django URLconf** — `path()`, `re_path()`, `include()` URL patterns
+- **FastAPI routes** — `@app.get/post`, `@router.get/post` decorator extraction
+
 ### Risk detection (static rules, no AI)
 - **God classes** — Classes with 15+ methods flagged
 - **Missing validation** — Controllers with write methods but no FormRequest
@@ -230,6 +248,8 @@ Full structured data including:
 - Database schema (columns, FKs, indexes)
 - Blade views with component/livewire/route references
 - Observer and Event mappings
+- DI registrations (C#/.NET)
+- View mappings (Avalonia/Razor)
 - Dependency graph
 - Risk list with severity and location
 
@@ -266,11 +286,12 @@ Source files
           │
           ├── Dependency resolver ──→ import graph, circular deps
           ├── Architecture detector → pattern detection
-          ├── Route extractor ──────→ URL → controller map
-          ├── Model extractor ──────→ Eloquent relationships
-          ├── Schema extractor ─────→ migration columns, FKs
-          ├── Blade extractor ──────→ views, includes, components
+          ├── Route extractor ──────→ URL → controller map (Laravel/Go/Flask/Django/FastAPI)
+          ├── Model extractor ──────→ Eloquent / EF Core / Django ORM relationships
+          ├── Schema extractor ─────→ migration columns, FKs (Laravel/EF Core/Go SQL)
+          ├── Blade extractor ──────→ views, includes, components (Laravel/Avalonia/Razor)
           ├── Observer extractor ───→ Model → Observer mapping
+          ├── DI extractor ─────────→ Service registration (C#/.NET)
           ├── Risk detector ────────→ rule-based warnings
           ├── Gap detector ─────────→ missing policies/tests/validators
           ├── Rules engine ─────────→ YAML custom rules
@@ -288,8 +309,8 @@ Source files
 |---------|----------|-------|-----|---------|----------------|-------------|
 | school-attendance | PHP/Laravel | 546 | 78,707 | 316 | 1,487 | 53:1 |
 | gestionescolar | PHP/Laravel | 824 | 120,626 | 869 | 906 | 133:1 |
-| facturador | C#/.NET | 262 | 44,423 | 314 | ~800 | 55:1 |
-| fact-elec-service | Go | 88 | 11,158 | 477 | ~400 | 28:1 |
+| facturador | C#/.NET + Avalonia + EF Core | 262 | 44,423 | 314 | ~800 | 55:1 |
+| fact-elec-service | Go + net/http + SQLite | 88 | 11,158 | 477 | ~400 | 28:1 |
 
 ---
 
@@ -317,6 +338,9 @@ codecontext/
 │   ├── migrations.py      # Schema extraction from migrations
 │   ├── blade_views.py     # Blade view extraction (includes, livewire, routes)
 │   ├── observers.py       # Observer + Event/Listener mapping
+│   ├── csharp_extractors.py # C#/.NET: EF Core schema, DI, MVVM, ASP.NET routes
+│   ├── go_extractors.py   # Go: net/http routes, middleware chain, embedded SQL
+│   ├── python_extractors.py # Python: Flask/Django/FastAPI routes and models
 │   ├── risks.py           # Static risk detection (built-in rules)
 │   ├── gaps.py            # Gap detection (missing policies/tests/validators)
 │   └── traceability.py    # Route→Controller→Service→Model chains
@@ -339,7 +363,7 @@ codecontext/
 - [x] YAML rules engine (11 check types)
 - [x] CI/CD integration (exit codes, issues.json)
 - [x] MCP server for live agent queries (9 tools)
-- [ ] Multi-language extractors (C#/.NET EF Core, Python Django/Flask, Go)
+- [x] Multi-language extractors (C#/.NET EF Core, Go net/http, Python Flask/Django/FastAPI)
 - [ ] Incremental updates (`--update` flag, hash-based)
 - [ ] Spring Boot / Java support
 - [ ] HTML visualization
@@ -395,6 +419,24 @@ CodeContext escanea tu código usando parsers AST y tree-sitter, y genera un **a
 - **Events & Listeners** — Arrays `$listen` de EventServiceProvider, mapeo de `event()`
 - **Detección de Livewire** — Identificación automática de componentes Livewire
 - **Fillable/casts/traits** — Propiedades de modelos extraídas del código
+
+### Análisis profundo para C#/.NET
+- **EF Core schema** — `DbContext` + `DbSet<T>`, `OnModelCreating` relaciones, índices, unique constraints
+- **Registro DI** — `AddTransient/AddScoped/AddSingleton<I,T>` y `AddDbContext<T>`
+- **Vistas MVVM** — Avalonia `.axaml` → ViewModel vía `x:DataType`, Razor `.cshtml`
+- **Rutas ASP.NET** — `[HttpGet]`, `[HttpPost]`, `[Route]` routing por atributos
+- **Detección de interfaces** — Separación automática `inherits_from` vs `implements`
+
+### Análisis profundo para Go
+- **Rutas HTTP** — `net/http` `HandleFunc` y `Handle` (24 rutas en fact-elec-service)
+- **Cadena de middleware** — `func(http.Handler) http.Handler`, patrón `Chain`
+- **Schema SQL embebido** — `CREATE TABLE` / `CREATE INDEX` desde backtick strings
+
+### Análisis profundo para Python
+- **Rutas Flask** — `@app.route`, `@bp.route` con métodos
+- **Modelos Django** — Clases `models.Model` con `CharField`, `ForeignKey`, etc.
+- **URLconf Django** — `path()`, `re_path()`, `include()`
+- **Rutas FastAPI** — `@app.get/post`, `@router.get/post`
 
 ### Detección de riesgos (reglas estáticas, sin IA)
 - **God classes** — Clases con 15+ métodos marcadas
@@ -643,8 +685,8 @@ Archivos fuente
 |----------|----------|----------|-----|----------|----------------|------------|
 | school-attendance | PHP/Laravel | 546 | 78,707 | 316 | 1,487 | 53:1 |
 | gestionescolar | PHP/Laravel | 824 | 120,626 | 869 | 906 | 133:1 |
-| facturador | C#/.NET | 262 | 44,423 | 314 | ~800 | 55:1 |
-| fact-elec-service | Go | 88 | 11,158 | 477 | ~400 | 28:1 |
+| facturador | C#/.NET + Avalonia + EF Core | 262 | 44,423 | 314 | ~800 | 55:1 |
+| fact-elec-service | Go + net/http + SQLite | 88 | 11,158 | 477 | ~400 | 28:1 |
 
 ---
 
@@ -672,6 +714,9 @@ codecontext/
 │   ├── migrations.py      # Extracción de schema desde migraciones
 │   ├── blade_views.py     # Extracción de vistas Blade (includes, livewire, rutas)
 │   ├── observers.py       # Mapeo de Observers + Events/Listeners
+│   ├── csharp_extractors.py # C#/.NET: EF Core, DI, MVVM, ASP.NET routes
+│   ├── go_extractors.py   # Go: net/http routes, middleware, SQL schema
+│   ├── python_extractors.py # Python: Flask, Django, FastAPI routes/models
 │   ├── risks.py           # Detección estática de riesgos (reglas built-in)
 │   ├── gaps.py            # Detección de gaps (policies/tests/validators faltantes)
 │   └── traceability.py    # Cadenas Ruta→Controller→Service→Model
@@ -694,7 +739,7 @@ codecontext/
 - [x] Motor de reglas YAML (11 check types)
 - [x] Integración CI/CD (exit codes, issues.json)
 - [x] Servidor MCP para consultas en vivo (9 tools)
-- [ ] Extractores multi-lenguaje (C#/.NET EF Core, Python Django/Flask, Go)
+- [x] Extractores multi-lenguaje (C#/.NET EF Core, Go net/http, Python Flask/Django/FastAPI)
 - [ ] Actualizaciones incrementales (`--update`, basado en hashes)
 - [ ] Soporte para Spring Boot / Java
 - [ ] Visualización HTML
