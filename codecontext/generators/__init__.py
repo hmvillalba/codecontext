@@ -45,6 +45,12 @@ def generate_json_index(index: ProjectIndex, max_output_tokens: int = 8000) -> d
     if index.events:
         compact["events"] = _build_events(index)
 
+    if index.di_registrations:
+        compact["di_registrations"] = _build_di(index)
+
+    if index.view_mappings:
+        compact["view_mappings"] = _build_views_map(index)
+
     return compact
 
 
@@ -223,4 +229,28 @@ def _build_events(index: ProjectIndex) -> list[dict]:
             "file": e.file_path,
         }
         for e in index.events
+    ]
+
+
+def _build_di(index: ProjectIndex) -> list[dict]:
+    return [
+        {
+            "interface": d.interface,
+            "implementation": d.implementation,
+            "lifetime": d.lifetime,
+            "file": d.file_path,
+        }
+        for d in index.di_registrations
+    ]
+
+
+def _build_views_map(index: ProjectIndex) -> list[dict]:
+    return [
+        {
+            "view": v.view_name,
+            "view_model": v.view_model,
+            "file": v.file_path,
+            "framework": v.framework,
+        }
+        for v in index.view_mappings
     ]

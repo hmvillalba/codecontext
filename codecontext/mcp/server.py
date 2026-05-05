@@ -99,6 +99,8 @@ def scan_project(path: str, rules_path: str = "") -> dict:
         "blade_views": len(index.blade_views),
         "observers": len(index.observers),
         "events": len(index.events),
+        "di_registrations": len(index.di_registrations),
+        "view_mappings": len(index.view_mappings),
         "summary_tokens": len(summary) // 4,
         "architecture": index.architecture.get("pattern", "unknown"),
     }

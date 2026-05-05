@@ -17,6 +17,8 @@ def generate_markdown(index: ProjectIndex) -> str:
         _database_schema_section(index),
         _blade_views_section(index),
         _observers_events_section(index),
+        _di_section(index),
+        _view_mappings_section(index),
         _detailed_nodes(index),
         _dependency_map(index),
     ]
@@ -161,6 +163,38 @@ def _observers_events_section(index: ProjectIndex) -> str:
             listeners_str = ", ".join(f"`{l}`" for l in e.listeners) if e.listeners else "(none)"
             lines.append(f"- `{e.event}` → {listeners_str}")
         lines.append("")
+
+    return "\n".join(lines)
+
+
+def _di_section(index: ProjectIndex) -> str:
+    if not index.di_registrations:
+        return ""
+
+    lines = ["## Dependency Injection", ""]
+    by_lifetime: dict[str, list] = {}
+    for d in index.di_registrations:
+        by_lifetime.setdefault(d.lifetime, []).append(d)
+
+    for lifetime in sorted(by_lifetime.keys()):
+        regs = by_lifetime[lifetime]
+        lines.append(f"### {lifetime.title()} ({len(regs)})")
+        lines.append("")
+        for r in regs:
+            lines.append(f"- `{r.interface}` → `{r.implementation}`")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _view_mappings_section(index: ProjectIndex) -> str:
+    if not index.view_mappings:
+        return ""
+
+    lines = ["## View Mappings", ""]
+    for v in index.view_mappings:
+        vm_part = f" → `{v.view_model}`" if v.view_model else ""
+        lines.append(f"- `{v.view_name}` ({v.framework}){vm_part}  — {v.file_path}")
 
     return "\n".join(lines)
 

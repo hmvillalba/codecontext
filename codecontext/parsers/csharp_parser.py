@@ -148,8 +148,9 @@ class CSharpParser(BaseParser):
                         decorators.append(_txt(attr, source))
             elif child.type == "base_list":
                 for bc in child.children:
-                    if bc.type == "identifier" or bc.type == "qualified_name" or bc.type == "generic_name":
-                        inherits.append(_txt(bc, source))
+                    if bc.type in ("identifier", "qualified_name", "generic_name"):
+                        base_name = _txt(bc, source)
+                        inherits.append(base_name)
             elif child.type == "type_parameter_list":
                 pass
 
@@ -181,6 +182,20 @@ class CSharpParser(BaseParser):
                                     vn = _find(vc2, "identifier")
                                     if vn:
                                         attributes.append(_txt(vn, source))
+
+        is_interface = node.type == "interface_declaration"
+        if is_interface:
+            implements = list(inherits)
+            inherits = []
+        else:
+            split_inherits = []
+            for base_name in inherits:
+                simple = base_name.split(".")[-1].split("<")[0]
+                if simple.startswith("I") and len(simple) > 1 and simple[1].isupper():
+                    implements.append(base_name)
+                else:
+                    split_inherits.append(base_name)
+            inherits = split_inherits
 
         return CodeNode(
             name=name,

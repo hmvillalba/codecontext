@@ -188,6 +188,22 @@ class EventMapping:
 
 
 @dataclass
+class DIRegistration:
+    interface: str
+    implementation: str
+    lifetime: str
+    file_path: str = ""
+
+
+@dataclass
+class ViewMapping:
+    view_name: str
+    view_model: str
+    file_path: str = ""
+    framework: str = ""
+
+
+@dataclass
 class ProjectIndex:
     root_path: str
     files: list[FileSummary] = field(default_factory=list)
@@ -203,4 +219,6 @@ class ProjectIndex:
     blade_views: list[BladeView] = field(default_factory=list)
     observers: list[ObserverMapping] = field(default_factory=list)
     events: list[EventMapping] = field(default_factory=list)
+    di_registrations: list[DIRegistration] = field(default_factory=list)
+    view_mappings: list[ViewMapping] = field(default_factory=list)
     generated_at: str = ""

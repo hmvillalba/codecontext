@@ -13,11 +13,19 @@ from codecontext.analyzers.dependency import resolve_dependencies, find_circular
 from codecontext.analyzers.routes import extract_routes
 from codecontext.analyzers.model_relations import extract_model_relations, extract_model_properties
 from codecontext.analyzers.migrations import extract_migrations
-from codecontext.analyzers.risks import detect_risks
-from codecontext.analyzers.gaps import detect_gaps
 from codecontext.analyzers.traceability import build_traces, build_role_map
 from codecontext.analyzers.blade_views import extract_blade_views
 from codecontext.analyzers.observers import extract_observers, extract_events
+from codecontext.analyzers.csharp_extractors import (
+    extract_ef_schema, extract_ef_relations, extract_di_registrations,
+    extract_mvvm_views, extract_cs_routes,
+)
+from codecontext.analyzers.go_extractors import (
+    extract_go_routes, extract_go_middleware, extract_go_schema,
+)
+from codecontext.analyzers.python_extractors import (
+    extract_python_routes, extract_python_models,
+)
 from codecontext.rules.engine import load_rules, evaluate_custom_rules
 from codecontext.generators import generate_json_index, generate_compact_json_string
 from codecontext.generators.markdown import generate_markdown
@@ -135,9 +143,64 @@ def scan_project(
     index.architecture = detect_architecture(index, index.dependencies)
     index.entry_points = index.architecture.get("entry_points", [])
 
-    _extract_laravel_specifics(index, root, rules_path)
+    _extract_framework_specifics(index, root, rules_path)
 
     return index
+
+
+def _extract_framework_specifics(index: ProjectIndex, root: Path, rules_path: Optional[str] = None):
+    lang_dist: dict[str, int] = {}
+    for f in index.files:
+        lang_dist[f.language.value] = lang_dist.get(f.language.value, 0) + 1
+    primary = max(lang_dist, key=lang_dist.get) if lang_dist else "unknown"
+
+    if primary == "php":
+        _extract_laravel_specifics(index, root, rules_path)
+    elif primary == "csharp":
+        _extract_csharp_specifics(index, root, rules_path)
+    elif primary == "go":
+        _extract_go_specifics(index, root, rules_path)
+    elif primary == "python":
+        _extract_python_specifics(index, root, rules_path)
+    else:
+        _apply_risks_and_rules(index, root, rules_path)
+
+
+def _apply_risks_and_rules(index: ProjectIndex, root: Path, rules_path: Optional[str] = None):
+    from codecontext.analyzers.risks import detect_risks
+    from codecontext.analyzers.gaps import detect_gaps
+
+    index.risks = detect_risks(index)
+    index.risks.extend(detect_gaps(index))
+
+    custom_rules = load_rules(rules_path)
+    if custom_rules:
+        index.risks.extend(evaluate_custom_rules(index, custom_rules))
+
+
+def _extract_csharp_specifics(index: ProjectIndex, root: Path, rules_path: Optional[str] = None):
+    index.migrations = extract_ef_schema(index)
+    index.model_relations = extract_ef_relations(index)
+    index.di_registrations = extract_di_registrations(index)
+    index.view_mappings = extract_mvvm_views(root)
+    index.routes = extract_cs_routes(index)
+
+    _apply_risks_and_rules(index, root, rules_path)
+
+
+def _extract_go_specifics(index: ProjectIndex, root: Path, rules_path: Optional[str] = None):
+    index.routes = extract_go_routes(index, root)
+    index.migrations = extract_go_schema(index, root)
+    index.architecture["middleware"] = extract_go_middleware(index, root)
+
+    _apply_risks_and_rules(index, root, rules_path)
+
+
+def _extract_python_specifics(index: ProjectIndex, root: Path, rules_path: Optional[str] = None):
+    index.routes = extract_python_routes(index, root)
+    index.migrations = extract_python_models(index, root)
+
+    _apply_risks_and_rules(index, root, rules_path)
 
 
 def _extract_laravel_specifics(index: ProjectIndex, root: Path, rules_path: Optional[str] = None):
@@ -166,13 +229,7 @@ def _extract_laravel_specifics(index: ProjectIndex, root: Path, rules_path: Opti
             index.migrations = extract_migrations(md, root)
             break
 
-    index.risks = detect_risks(index)
-
-    index.risks.extend(detect_gaps(index))
-
-    custom_rules = load_rules(rules_path)
-    if custom_rules:
-        index.risks.extend(evaluate_custom_rules(index, custom_rules))
+    _apply_risks_and_rules(index, root, rules_path)
 
     if index.routes:
         index.traces = build_traces(index, root)
@@ -232,6 +289,8 @@ def write_outputs(index: ProjectIndex, output_dir: Path, fail_on: str = "high") 
         "total_blade_views": len(index.blade_views),
         "total_observers": len(index.observers),
         "total_events": len(index.events),
+        "total_di": len(index.di_registrations),
+        "total_view_mappings": len(index.view_mappings),
         "ci_blocking": ci_result["blocking_issues"],
         "ci_should_fail": ci_result["should_fail"],
         "circular_deps": len(deps_data.get("circular", [])),
