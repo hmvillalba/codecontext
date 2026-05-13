@@ -93,6 +93,33 @@ def _get_parser_for_file(path: Path, parsers) -> Optional[object]:
     return None
 
 
+def _iter_files_safe(root: Path):
+    """Iterate all files under root, skipping inaccessible directories."""
+    visited = set()
+    stack = [root]
+    while stack:
+        current = stack.pop()
+        try:
+            real = current.resolve()
+        except (PermissionError, OSError):
+            continue
+        if real in visited:
+            continue
+        visited.add(real)
+        try:
+            entries = list(current.iterdir())
+        except (PermissionError, OSError):
+            continue
+        for entry in entries:
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    stack.append(entry)
+                elif entry.is_file():
+                    yield entry
+            except (PermissionError, OSError):
+                continue
+
+
 def scan_project(
     root_path: str | Path,
     max_workers: int = 4,
@@ -105,12 +132,15 @@ def scan_project(
         raise FileNotFoundError(f"Path does not exist: {root}")
 
     parsers = get_parsers()
-    files_to_parse: list[tuple[Path, object]] = []
+    skipped_errors: list[str] = []
 
-    for path in root.rglob("*"):
-        if not path.is_file():
+    files_to_parse: list[tuple[Path, object]] = []
+    for path in _iter_files_safe(root):
+        try:
+            rel = path.relative_to(root)
+        except ValueError:
             continue
-        if _should_ignore(path.relative_to(root)):
+        if _should_ignore(rel):
             continue
         parser = _get_parser_for_file(path, parsers)
         if parser:
@@ -128,8 +158,14 @@ def scan_project(
         try:
             result = parser.parse(path, root)
             summaries.append(result)
+        except (PermissionError, OSError) as e:
+            msg = f"Warning: cannot access {path}: {e}"
+            print(msg)
+            skipped_errors.append(msg)
         except Exception as e:
-            print(f"Warning: failed to parse {path}: {e}")
+            msg = f"Warning: failed to parse {path}: {e}"
+            print(msg)
+            skipped_errors.append(msg)
 
     summaries.sort(key=lambda s: s.file_path)
 
@@ -139,11 +175,22 @@ def scan_project(
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
 
-    index.dependencies = resolve_dependencies(index)
-    index.architecture = detect_architecture(index, index.dependencies)
+    try:
+        index.dependencies = resolve_dependencies(index)
+    except Exception as e:
+        print(f"Warning: dependency resolution failed: {e}")
+
+    try:
+        index.architecture = detect_architecture(index, index.dependencies)
+    except Exception as e:
+        print(f"Warning: architecture detection failed: {e}")
+
     index.entry_points = index.architecture.get("entry_points", [])
 
-    _extract_framework_specifics(index, root, rules_path)
+    try:
+        _extract_framework_specifics(index, root, rules_path)
+    except Exception as e:
+        print(f"Warning: framework extraction failed: {e}")
 
     return index
 
@@ -170,35 +217,51 @@ def _apply_risks_and_rules(index: ProjectIndex, root: Path, rules_path: Optional
     from codecontext.analyzers.risks import detect_risks
     from codecontext.analyzers.gaps import detect_gaps
 
-    index.risks = detect_risks(index)
-    index.risks.extend(detect_gaps(index))
+    try:
+        index.risks = detect_risks(index)
+        index.risks.extend(detect_gaps(index))
+    except Exception as e:
+        print(f"Warning: risk detection failed: {e}")
 
-    custom_rules = load_rules(rules_path)
-    if custom_rules:
-        index.risks.extend(evaluate_custom_rules(index, custom_rules))
+    try:
+        custom_rules = load_rules(rules_path)
+        if custom_rules:
+            index.risks.extend(evaluate_custom_rules(index, custom_rules))
+    except Exception as e:
+        print(f"Warning: custom rules evaluation failed: {e}")
+
+
+def _safe_extract(fn, *args, default=None, label=""):
+    try:
+        return fn(*args)
+    except Exception as e:
+        print(f"Warning: {label or fn.__name__} failed: {e}")
+        return default
 
 
 def _extract_csharp_specifics(index: ProjectIndex, root: Path, rules_path: Optional[str] = None):
-    index.migrations = extract_ef_schema(index)
-    index.model_relations = extract_ef_relations(index)
-    index.di_registrations = extract_di_registrations(index)
-    index.view_mappings = extract_mvvm_views(root)
-    index.routes = extract_cs_routes(index)
+    index.migrations = _safe_extract(extract_ef_schema, index, default=[], label="ef_schema")
+    index.model_relations = _safe_extract(extract_ef_relations, index, default=[], label="ef_relations")
+    index.di_registrations = _safe_extract(extract_di_registrations, index, default=[], label="di_registrations")
+    index.view_mappings = _safe_extract(extract_mvvm_views, root, default=[], label="mvvm_views")
+    index.routes = _safe_extract(extract_cs_routes, index, default=[], label="cs_routes")
 
     _apply_risks_and_rules(index, root, rules_path)
 
 
 def _extract_go_specifics(index: ProjectIndex, root: Path, rules_path: Optional[str] = None):
-    index.routes = extract_go_routes(index, root)
-    index.migrations = extract_go_schema(index, root)
-    index.architecture["middleware"] = extract_go_middleware(index, root)
+    index.routes = _safe_extract(extract_go_routes, index, root, default=[], label="go_routes")
+    index.migrations = _safe_extract(extract_go_schema, index, root, default=[], label="go_schema")
+    mw = _safe_extract(extract_go_middleware, index, root, default=[], label="go_middleware")
+    if mw:
+        index.architecture["middleware"] = mw
 
     _apply_risks_and_rules(index, root, rules_path)
 
 
 def _extract_python_specifics(index: ProjectIndex, root: Path, rules_path: Optional[str] = None):
-    index.routes = extract_python_routes(index, root)
-    index.migrations = extract_python_models(index, root)
+    index.routes = _safe_extract(extract_python_routes, index, root, default=[], label="python_routes")
+    index.migrations = _safe_extract(extract_python_models, index, root, default=[], label="python_models")
 
     _apply_risks_and_rules(index, root, rules_path)
 
@@ -210,7 +273,7 @@ def _extract_laravel_specifics(index: ProjectIndex, root: Path, rules_path: Opti
     ]
     for rd in routes_dirs:
         if rd.is_dir():
-            index.routes = extract_routes(rd, root)
+            index.routes = _safe_extract(extract_routes, rd, root, default=[], label="routes")
             break
 
     model_files = [
@@ -218,7 +281,7 @@ def _extract_laravel_specifics(index: ProjectIndex, root: Path, rules_path: Opti
         if any(n.node_type == NodeType.MODEL for n in f.nodes)
     ]
     if model_files:
-        index.model_relations = extract_model_relations(model_files, root)
+        index.model_relations = _safe_extract(extract_model_relations, model_files, root, default=[], label="model_relations")
 
     migration_dirs = [
         root / "database" / "migrations",
@@ -226,18 +289,18 @@ def _extract_laravel_specifics(index: ProjectIndex, root: Path, rules_path: Opti
     ]
     for md in migration_dirs:
         if md.is_dir():
-            index.migrations = extract_migrations(md, root)
+            index.migrations = _safe_extract(extract_migrations, md, root, default=[], label="migrations")
             break
 
     _apply_risks_and_rules(index, root, rules_path)
 
     if index.routes:
-        index.traces = build_traces(index, root)
-        index.role_map = build_role_map(index)
+        index.traces = _safe_extract(build_traces, index, root, default=[], label="traces")
+        index.role_map = _safe_extract(build_role_map, index, default={}, label="role_map")
 
-    index.blade_views = extract_blade_views(root)
-    index.observers = extract_observers(root, index.files)
-    index.events = extract_events(root)
+    index.blade_views = _safe_extract(extract_blade_views, root, default=[], label="blade_views")
+    index.observers = _safe_extract(extract_observers, root, index.files, default=[], label="observers")
+    index.events = _safe_extract(extract_events, root, default=[], label="events")
 
 
 def write_outputs(index: ProjectIndex, output_dir: Path, fail_on: str = "high") -> dict:
